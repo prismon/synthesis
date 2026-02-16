@@ -1,0 +1,48 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_DB: synthesis
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d synthesis"]
+      interval: 2s
+      timeout: 2s
+      retries: 20
+
+  nats:
+    image: nats:2.10
+    command: ["-c", "/etc/nats/nats.conf"]
+    volumes:
+      - ./nats/nats.conf:/etc/nats/nats.conf:ro
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+
+  mcp-gateway:
+    build:
+      context: ..
+      dockerfile: services/mcp-gateway/Dockerfile
+    environment:
+      DATABASE_URL: "postgres://postgres:postgres@postgres:5432/synthesis"
+      NATS_URL: "nats://nats:4222"
+      PORT: "8080"
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      nats:
+        condition: service_started
+
+  agent-runner:
+    build:
+      context: ..
+      dockerfile: services/agent-runner/Dockerfile
+    environment:
+      NATS_URL: "nats://nats:4222"
+    depends_on:
+      - nats

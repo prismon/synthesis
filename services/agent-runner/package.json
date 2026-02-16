@@ -1,0 +1,19 @@
+{
+  "name": "@synthesis/agent-runner",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "echo \"(no lint yet)\"",
+    "test": "echo \"(no tests yet)\""
+  },
+  "dependencies": {
+    "nats": "^2.29.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}

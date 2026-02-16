@@ -1,0 +1,13 @@
+{
+  "name": "synthesis",
+  "private": true,
+  "packageManager": "pnpm@9.0.0",
+  "scripts": {
+    "build": "pnpm -r build",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "dev": "docker compose -f infra/docker-compose.yml up --build",
+    "down": "docker compose -f infra/docker-compose.yml down -v"
+  }
+}
