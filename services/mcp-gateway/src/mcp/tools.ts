@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { Tools } from "@synthesis/contracts";
 import { db } from "../db/client.js";
 import { counterparts, syncPolicies, twinEvents, twins, workspaces, tenants } from "../db/schema.js";
@@ -15,34 +16,18 @@ function newId(prefix: string) {
 }
 
 export type ToolContext = {
-  js: { publish: (subj: string, data: Uint8Array) => Promise<{ seq: bigint }> };
+  js: { publish: (subj: string, data: Uint8Array) => Promise<{ seq: number }> };
   sc: { encode: (s: string) => Uint8Array };
 };
 
-export function listTools() {
-  return [
-    { name: "twin.list", description: "List twins", inputSchema: Tools.twin_list.shape },
-    { name: "twin.create", description: "Create a twin", inputSchema: Tools.twin_create.shape },
-    { name: "twin.get", description: "Get a twin", inputSchema: Tools.twin_get.shape },
-    { name: "twin.getEvents", description: "Get twin events", inputSchema: Tools.twin_getEvents.shape },
-    { name: "twin.appendEvent", description: "Append an event to a twin", inputSchema: Tools.twin_appendEvent.shape },
-    { name: "counterpart.attach", description: "Attach a counterpart to a twin", inputSchema: Tools.counterpart_attach.shape },
-    { name: "syncPolicy.create", description: "Create a sync policy", inputSchema: Tools.syncPolicy_create.shape }
-  ];
-}
+export async function twinList(args: z.infer<typeof Tools.twin_list>) {
+  const { tenantId, workspaceId } = args;
 
-export async function callTool(ctx: ToolContext, name: string, args: Record<string, unknown>) {
-  switch (name) {
-    case "twin.list": return twinList(args);
-    case "twin.create": return twinCreate(ctx, args);
-    case "twin.get": return twinGet(args);
-    case "twin.getEvents": return twinGetEvents(args);
-    case "twin.appendEvent": return twinAppendEvent(ctx, args);
-    case "counterpart.attach": return counterpartAttach(ctx, args);
-    case "syncPolicy.create": return syncPolicyCreate(args);
-    default:
-      return { ok: false, error: { code: "TOOL_NOT_FOUND", message: `Unknown tool: ${name}` } };
-  }
+  const rows = workspaceId
+    ? await db.select().from(twins).where(and(eq(twins.tenantId, tenantId), eq(twins.workspaceId, workspaceId))).orderBy(desc(twins.createdAt))
+    : await db.select().from(twins).where(eq(twins.tenantId, tenantId)).orderBy(desc(twins.createdAt));
+
+  return { twins: rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })) };
 }
 
 async function ensureTenantWorkspace(tenantId: string, workspaceId: string) {
@@ -56,22 +41,8 @@ async function ensureTenantWorkspace(tenantId: string, workspaceId: string) {
   }
 }
 
-async function twinList(args: Record<string, unknown>) {
-  const parsed = Tools.twin_list.safeParse(args);
-  if (!parsed.success) return { ok: false, error: { code: "INVALID_ARGS", message: parsed.error.message } };
-  const { tenantId, workspaceId } = parsed.data;
-
-  const rows = workspaceId
-    ? await db.select().from(twins).where(and(eq(twins.tenantId, tenantId), eq(twins.workspaceId, workspaceId))).orderBy(desc(twins.createdAt))
-    : await db.select().from(twins).where(eq(twins.tenantId, tenantId)).orderBy(desc(twins.createdAt));
-
-  return { ok: true, result: { twins: rows.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })) } };
-}
-
-async function twinCreate(ctx: ToolContext, args: Record<string, unknown>) {
-  const parsed = Tools.twin_create.safeParse(args);
-  if (!parsed.success) return { ok: false, error: { code: "INVALID_ARGS", message: parsed.error.message } };
-  const { tenantId, workspaceId, type, title } = parsed.data;
+export async function twinCreate(ctx: ToolContext, args: z.infer<typeof Tools.twin_create>) {
+  const { tenantId, workspaceId, type, title } = args;
 
   await ensureTenantWorkspace(tenantId, workspaceId);
 
@@ -80,37 +51,30 @@ async function twinCreate(ctx: ToolContext, args: Record<string, unknown>) {
 
   await db.insert(twins).values({ id: twinId, tenantId, workspaceId, type, title, createdAt });
 
-  // Append twin.created event
   const append = await appendEvent(ctx, {
     tenantId,
     twinId,
     type: "twin.created",
     payload: {},
-    causationId: undefined,
-    correlationId: undefined,
     ts: nowIso()
   });
 
-  if (!append.ok) return append;
+  if (!append.ok) throw new Error(append.error.message);
 
-  return { ok: true, result: { twinId, eventSeq: append.result.seq } };
+  return { twinId, eventSeq: append.result.seq };
 }
 
-async function twinGet(args: Record<string, unknown>) {
-  const parsed = Tools.twin_get.safeParse(args);
-  if (!parsed.success) return { ok: false, error: { code: "INVALID_ARGS", message: parsed.error.message } };
-  const { tenantId, twinId } = parsed.data;
+export async function twinGetState(args: z.infer<typeof Tools.twin_getState>) {
+  const { tenantId, twinId } = args;
 
   const row = await db.select().from(twins).where(and(eq(twins.tenantId, tenantId), eq(twins.id, twinId))).limit(1);
-  if (row.length === 0) return { ok: false, error: { code: "NOT_FOUND", message: "Twin not found" } };
+  if (row.length === 0) throw new Error("Twin not found");
 
-  return { ok: true, result: { twin: { ...row[0], createdAt: row[0].createdAt.toISOString() } } };
+  return { twin: { ...row[0]!, createdAt: row[0]!.createdAt.toISOString() } };
 }
 
-async function twinGetEvents(args: Record<string, unknown>) {
-  const parsed = Tools.twin_getEvents.safeParse(args);
-  if (!parsed.success) return { ok: false, error: { code: "INVALID_ARGS", message: parsed.error.message } };
-  const { tenantId, twinId, fromSeq = 1, limit = 100 } = parsed.data;
+export async function twinGetEvents(args: z.infer<typeof Tools.twin_getEvents>) {
+  const { tenantId, twinId, fromSeq = 1, limit = 100 } = args;
 
   const rows = await db
     .select()
@@ -120,34 +84,28 @@ async function twinGetEvents(args: Record<string, unknown>) {
     .limit(limit);
 
   return {
-    ok: true,
-    result: {
-      events: rows.map((r) => ({
-        tenantId: r.tenantId,
-        twinId: r.twinId,
-        seq: r.seq,
-        type: r.eventType,
-        event: r.eventJson,
-        createdAt: r.createdAt.toISOString()
-      })),
-      nextSeq: rows.length ? rows[rows.length - 1].seq + 1 : fromSeq
-    }
+    events: rows.map((r) => ({
+      tenantId: r.tenantId,
+      twinId: r.twinId,
+      seq: r.seq,
+      type: r.eventType,
+      event: r.eventJson,
+      createdAt: r.createdAt.toISOString()
+    })),
+    nextSeq: rows.length ? rows[rows.length - 1]!.seq + 1 : fromSeq
   };
 }
 
-async function twinAppendEvent(ctx: ToolContext, args: Record<string, unknown>) {
-  const parsed = Tools.twin_appendEvent.safeParse(args);
-  if (!parsed.success) return { ok: false, error: { code: "INVALID_ARGS", message: parsed.error.message } };
-
-  const { tenantId, twinId, type, payload, causationId, correlationId } = parsed.data;
+export async function twinAppendEvent(ctx: ToolContext, args: z.infer<typeof Tools.twin_appendEvent>) {
+  const { tenantId, twinId, type, payload, causationId, correlationId } = args;
   const env = { tenantId, twinId, type: type as any, payload, causationId, correlationId, ts: nowIso() };
-  return appendEvent(ctx, env);
+  const result = await appendEvent(ctx, env);
+  if (!result.ok) throw new Error(result.error.message);
+  return { seq: result.result.seq, event: result.result.event };
 }
 
-async function counterpartAttach(ctx: ToolContext, args: Record<string, unknown>) {
-  const parsed = Tools.counterpart_attach.safeParse(args);
-  if (!parsed.success) return { ok: false, error: { code: "INVALID_ARGS", message: parsed.error.message } };
-  const { tenantId, twinId, kind, resourceUri, role, syncPolicyId } = parsed.data;
+export async function counterpartAttach(ctx: ToolContext, args: z.infer<typeof Tools.counterpart_attach>) {
+  const { tenantId, twinId, kind, resourceUri, role, syncPolicyId } = args;
 
   const counterpartId = newId("cp");
   await db.insert(counterparts).values({
@@ -166,56 +124,55 @@ async function counterpartAttach(ctx: ToolContext, args: Record<string, unknown>
     twinId,
     type: "counterpart.attached" as const,
     payload: { counterpartId, kind, resourceUri, role, syncPolicyId },
-    ts: nowIso(),
-    causationId: undefined,
-    correlationId: undefined
+    ts: nowIso()
   };
 
   const append = await appendEvent(ctx, env);
-  if (!append.ok) return append;
+  if (!append.ok) throw new Error(append.error.message);
 
-  return { ok: true, result: { counterpartId, eventSeq: append.result.seq } };
+  return { counterpartId, eventSeq: append.result.seq };
 }
 
-async function syncPolicyCreate(args: Record<string, unknown>) {
-  const parsed = Tools.syncPolicy_create.safeParse(args);
-  if (!parsed.success) return { ok: false, error: { code: "INVALID_ARGS", message: parsed.error.message } };
-  const { tenantId, name, policy } = parsed.data;
+export async function syncPolicyCreate(args: z.infer<typeof Tools.syncPolicy_create>) {
+  const { tenantId, name, policy } = args;
 
   const id = newId("sp");
   await db.insert(syncPolicies).values({ id, tenantId, name, policyJson: policy, createdAt: new Date() });
-  return { ok: true, result: { syncPolicyId: id } };
+  return { syncPolicyId: id };
 }
 
 async function appendEvent(
   ctx: ToolContext,
-  env: { tenantId: string; twinId: string; type: any; payload: unknown; ts: string; causationId?: string; correlationId?: string }
+  env: { tenantId: string; twinId: string; type: any; payload: unknown; ts: string; causationId?: string | undefined; correlationId?: string | undefined }
 ) {
   const decision = runRules(env as any);
   if (decision.kind === "deny") {
-    return { ok: false, error: { code: decision.code, message: decision.message } };
+    return { ok: false as const, error: { code: decision.code, message: decision.message } };
   }
 
-  const maxSeq = await db
-    .select({ max: sql<number>`COALESCE(MAX(${twinEvents.seq}), 0)` })
-    .from(twinEvents)
-    .where(and(eq(twinEvents.tenantId, env.tenantId), eq(twinEvents.twinId, env.twinId)));
+  // Use the potentially-transformed event from the rules pipeline
+  const event = decision.event;
 
-  const nextSeq = (maxSeq[0]?.max ?? 0) + 1;
+  const inserted = await db.execute(sql`
+    INSERT INTO twin_events (tenant_id, twin_id, seq, event_type, event_json, causation_id, correlation_id, created_at)
+    SELECT
+      ${event.tenantId},
+      ${event.twinId},
+      COALESCE(MAX(seq), 0) + 1,
+      ${event.type},
+      ${JSON.stringify(event)}::jsonb,
+      ${event.causationId ?? null},
+      ${event.correlationId ?? null},
+      NOW()
+    FROM twin_events
+    WHERE tenant_id = ${event.tenantId} AND twin_id = ${event.twinId}
+    RETURNING seq
+  `);
 
-  await db.insert(twinEvents).values({
-    tenantId: env.tenantId,
-    twinId: env.twinId,
-    seq: nextSeq,
-    eventType: env.type,
-    eventJson: env,
-    causationId: env.causationId ?? null,
-    correlationId: env.correlationId ?? null,
-    createdAt: new Date()
-  });
+  const nextSeq = Number((inserted.rows[0] as Record<string, unknown>).seq);
 
-  const subject = subjectForTwin(env.tenantId, env.twinId);
-  await ctx.js.publish(subject, ctx.sc.encode(JSON.stringify({ seq: nextSeq, event: env })));
+  const subject = subjectForTwin(event.tenantId, event.twinId);
+  await ctx.js.publish(subject, ctx.sc.encode(JSON.stringify({ seq: nextSeq, event })));
 
-  return { ok: true, result: { seq: nextSeq, event: env } };
+  return { ok: true as const, result: { seq: nextSeq, event } };
 }

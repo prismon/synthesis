@@ -20,3 +20,6 @@ Use Swift + SwiftUI for the macOS client application(s).
 ### Mitigations
 - Unify all client-server interaction through MCP services (see ADR-004).
 - Keep client logic thin: render + orchestrate, with business logic in MCP-accessible services.
+
+### Notes
+- Linux client strategy is the web client (see ADR-001), not a native application.

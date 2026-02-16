@@ -8,15 +8,15 @@ export const tenants = pgTable("tenants", {
 
 export const workspaces = pgTable("workspaces", {
   id: text("id").primaryKey(),
-  tenantId: text("tenant_id").notNull(),
+  tenantId: text("tenant_id").notNull().references(() => tenants.id),
   name: text("name").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull()
 });
 
 export const twins = pgTable("twins", {
   id: text("id").primaryKey(),
-  tenantId: text("tenant_id").notNull(),
-  workspaceId: text("workspace_id").notNull(),
+  tenantId: text("tenant_id").notNull().references(() => tenants.id),
+  workspaceId: text("workspace_id").notNull().references(() => workspaces.id),
   type: text("type").notNull(),
   title: text("title").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull()
@@ -33,11 +33,11 @@ export const syncPolicies = pgTable("sync_policies", {
 export const counterparts = pgTable("counterparts", {
   id: text("id").primaryKey(),
   tenantId: text("tenant_id").notNull(),
-  twinId: text("twin_id").notNull(),
+  twinId: text("twin_id").notNull().references(() => twins.id),
   kind: text("kind").notNull(),
   resourceUri: text("mcp_resource_uri").notNull(),
   role: text("role").notNull(),
-  syncPolicyId: text("sync_policy_id"),
+  syncPolicyId: text("sync_policy_id").references(() => syncPolicies.id),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull()
 });
 
@@ -45,7 +45,7 @@ export const twinEvents = pgTable(
   "twin_events",
   {
     tenantId: text("tenant_id").notNull(),
-    twinId: text("twin_id").notNull(),
+    twinId: text("twin_id").notNull().references(() => twins.id),
     seq: integer("seq").notNull(),
     eventType: text("event_type").notNull(),
     eventJson: jsonb("event_json").notNull(),

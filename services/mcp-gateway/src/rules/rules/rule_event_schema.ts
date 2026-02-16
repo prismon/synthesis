@@ -1,8 +1,9 @@
 import type { RuleDecision } from "../pipeline.js";
-import { TwinEventEnvelope, validateTypedEvent } from "@synthesis/contracts";
+import type { TwinEventEnvelope } from "@synthesis/contracts";
+import { TwinEventEnvelope as TwinEventEnvelopeSchema, validateTypedEvent } from "@synthesis/contracts";
 
-export function ruleEventSchema(event: unknown): RuleDecision {
-  const parsed = TwinEventEnvelope.safeParse(event);
+export function ruleEventSchema(event: TwinEventEnvelope): RuleDecision {
+  const parsed = TwinEventEnvelopeSchema.safeParse(event);
   if (!parsed.success) {
     return { kind: "deny", code: "EVENT_INVALID", message: parsed.error.message };
   }

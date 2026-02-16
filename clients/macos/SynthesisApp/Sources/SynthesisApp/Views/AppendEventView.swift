@@ -22,11 +22,11 @@ struct AppendEventView: View {
 
     func create() async {
         do {
-            let res = try await mcp.callTool(
+            _ = try await mcp.callTool(
                 name: "twin.create",
                 arguments: ["tenantId": tenantId, "workspaceId": workspaceId, "type": type, "title": title]
             )
-            if res.ok { onCreated() }
+            onCreated()
         } catch {
             print("create error:", error)
         }

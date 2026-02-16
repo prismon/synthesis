@@ -1,13 +1,13 @@
 import Fastify from "fastify";
+import { randomUUID } from "node:crypto";
 import { config } from "./config.js";
 import { connectJetStream } from "./nats/jetstream.js";
-import { MCPToolCallRequest } from "./mcp/protocol.js";
-import { callTool, listTools } from "./mcp/tools.js";
-import { readResource } from "./mcp/resources.js";
+import { createMcpServer } from "./mcp/server.js";
 import { pool } from "./db/client.js";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import fs from "node:fs";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 
 async function runMigrations() {
   const distDir = path.dirname(fileURLToPath(import.meta.url));
@@ -23,31 +23,67 @@ async function main() {
   await runMigrations();
 
   const { nc, js, sc } = await connectJetStream();
+  const toolCtx = { js, sc };
+
+  const transports = new Map<string, StreamableHTTPServerTransport>();
 
   const app = Fastify({ logger: true });
 
   app.get("/healthz", async () => ({ ok: true }));
 
-  app.post("/mcp/tools/list", async () => {
-    return { tools: listTools() };
-  });
+  // --- MCP Streamable HTTP endpoint ---
 
-  app.post("/mcp/tools/call", async (req, reply) => {
-    const parsed = MCPToolCallRequest.safeParse(req.body);
-    if (!parsed.success) {
-      reply.code(400);
-      return { ok: false, error: { code: "INVALID_REQUEST", message: parsed.error.message } };
+  app.post("/mcp", async (req, reply) => {
+    const sessionId = req.headers["mcp-session-id"] as string | undefined;
+
+    if (sessionId && transports.has(sessionId)) {
+      const transport = transports.get(sessionId)! as StreamableHTTPServerTransport;
+      reply.hijack();
+      await transport.handleRequest(req.raw, reply.raw, req.body);
+      return;
     }
-    const res = await callTool({ js, sc }, parsed.data.name, parsed.data.arguments);
-    return res;
+
+    // New session — create server + transport
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: () => randomUUID(),
+      onsessioninitialized: (id) => {
+        transports.set(id, transport);
+      }
+    });
+
+    transport.onclose = () => {
+      if (transport.sessionId) {
+        transports.delete(transport.sessionId);
+      }
+    };
+
+    const server = createMcpServer(toolCtx);
+    await server.connect(transport as Parameters<typeof server.connect>[0]);
+
+    reply.hijack();
+    await transport.handleRequest(req.raw, reply.raw, req.body);
   });
 
-  app.get("/mcp/resources/:encodedUri", async (req: any, reply) => {
-    const encodedUri = req.params.encodedUri as string;
-    const uri = decodeURIComponent(encodedUri);
-    const res = await readResource(uri);
-    if (!res.ok) reply.code(404);
-    return res;
+  app.get("/mcp", async (req, reply) => {
+    const sessionId = req.headers["mcp-session-id"] as string | undefined;
+    if (!sessionId || !transports.has(sessionId)) {
+      reply.code(400).send({ error: "Invalid or missing session ID" });
+      return;
+    }
+    const transport = transports.get(sessionId)! as StreamableHTTPServerTransport;
+    reply.hijack();
+    await transport.handleRequest(req.raw, reply.raw);
+  });
+
+  app.delete("/mcp", async (req, reply) => {
+    const sessionId = req.headers["mcp-session-id"] as string | undefined;
+    if (!sessionId || !transports.has(sessionId)) {
+      reply.code(400).send({ error: "Invalid or missing session ID" });
+      return;
+    }
+    const transport = transports.get(sessionId)! as StreamableHTTPServerTransport;
+    reply.hijack();
+    await transport.handleRequest(req.raw, reply.raw);
   });
 
   await app.listen({ host: "0.0.0.0", port: Number(config.PORT) });

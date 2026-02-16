@@ -1,4 +1,4 @@
-import { connect, StringCodec } from "nats";
+import { connect, RetentionPolicy, StringCodec } from "nats";
 import { config } from "../config.js";
 
 const sc = StringCodec();
@@ -14,7 +14,7 @@ export async function connectJetStream() {
     await jsm.streams.add({
       name: "TWINEVENTS",
       subjects: ["twin.>"],
-      retention: "limits",
+      retention: RetentionPolicy.Limits,
       max_msgs_per_subject: -1,
       max_age: 0
     });

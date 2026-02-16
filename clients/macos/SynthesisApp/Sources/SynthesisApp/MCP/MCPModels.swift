@@ -1,31 +1,41 @@
 import Foundation
 
-struct MCPTool: Codable, Identifiable {
+// MARK: - JSON-RPC 2.0 Types
+
+struct JSONRPCRequest: Encodable {
+    let jsonrpc = "2.0"
+    let id: Int
+    let method: String
+    let params: AnyCodable?
+}
+
+struct JSONRPCResponse: Decodable {
+    let jsonrpc: String
+    let id: Int?
+    let result: AnyCodable?
+    let error: JSONRPCError?
+}
+
+struct JSONRPCError: Decodable {
+    let code: Int
+    let message: String
+    let data: AnyCodable?
+}
+
+// MARK: - MCP Types
+
+struct MCPTool: Identifiable {
     let name: String
     let description: String
-    let inputSchema: [String: AnyCodable]
     var id: String { name }
 }
 
-struct MCPToolListResponse: Codable {
-    let tools: [MCPTool]
+struct MCPContent {
+    let type: String
+    let text: String?
 }
 
-struct MCPToolCallRequest: Codable {
-    let name: String
-    let arguments: [String: AnyCodable]
-}
-
-struct MCPError: Codable {
-    let code: String
-    let message: String
-}
-
-struct MCPToolCallResponse: Codable {
-    let ok: Bool
-    let result: AnyCodable?
-    let error: MCPError?
-}
+// MARK: - AnyCodable
 
 struct AnyCodable: Codable {
     let value: Any

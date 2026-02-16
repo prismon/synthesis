@@ -22,4 +22,7 @@ Use TypeScript (Node.js) as the primary implementation language for all backend 
 ### Mitigations
 - Enforce contract-driven boundaries (Zod schemas) for all events and tool payloads.
 - Strict TS config, exhaustive checks, no implicit any, and CI gating.
-- Use NATS JetStream + batching to avoid DB thrash; introduce optimized “islands” only if proven necessary.
+- Use NATS JetStream + batching to avoid DB thrash; introduce optimized "islands" only if proven necessary.
+
+### Notes
+- Web-notebook experience (Yjs, TipTap/Lexical) is future scope and not yet implemented.

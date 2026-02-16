@@ -28,3 +28,6 @@ Clients will primarily call MCP tools and read MCP resources exposed by Synthesi
 ### Mitigations
 - Provide a thin "MCP Gateway" service with stable endpoints and well-defined tool schemas.
 - Define a small set of high-value read tools (e.g., `twin.getState`, `twin.list`, `twin.getEvents`) and avoid chatty N+1 patterns.
+
+### Notes
+- Transport is MCP Streamable HTTP (JSON-RPC 2.0 over HTTP) per MCP spec revision 2025-03-26. Single `POST /mcp` endpoint for all JSON-RPC calls; `GET /mcp` for SSE; `DELETE /mcp` for session teardown.

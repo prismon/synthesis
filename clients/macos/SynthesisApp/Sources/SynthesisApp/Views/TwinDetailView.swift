@@ -31,13 +31,11 @@ struct TwinDetailView: View {
 
     func loadEvents() async {
         do {
-            let res = try await mcp.callTool(
+            let result = try await mcp.callTool(
                 name: "twin.getEvents",
                 arguments: ["tenantId": tenantId, "twinId": twinId, "fromSeq": 1, "limit": 200]
             )
-            guard res.ok,
-                  let result = res.result?.value as? [String: Any],
-                  let rows = result["events"] as? [[String: Any]] else { return }
+            guard let rows = result?["events"] as? [[String: Any]] else { return }
             events = rows
         } catch {
             print("loadEvents error:", error)
@@ -46,11 +44,11 @@ struct TwinDetailView: View {
 
     func appendNote() async {
         do {
-            let res = try await mcp.callTool(
+            _ = try await mcp.callTool(
                 name: "twin.appendEvent",
                 arguments: ["tenantId": tenantId, "twinId": twinId, "type": "note.added", "payload": ["note": note]]
             )
-            if res.ok { await loadEvents() }
+            await loadEvents()
         } catch {
             print("appendNote error:", error)
         }

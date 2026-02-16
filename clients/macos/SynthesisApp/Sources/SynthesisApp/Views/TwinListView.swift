@@ -39,18 +39,19 @@ struct TwinListView: View {
                 Text("Select a twin")
             }
         }
-        .task { await refresh() }
+        .task {
+            do { try await mcp.initialize() } catch { print("init error:", error) }
+            await refresh()
+        }
     }
 
     func refresh() async {
         do {
-            let res = try await mcp.callTool(
+            let result = try await mcp.callTool(
                 name: "twin.list",
                 arguments: ["tenantId": tenantId, "workspaceId": workspaceId]
             )
-            guard res.ok,
-                  let result = res.result?.value as? [String: Any],
-                  let rows = result["twins"] as? [[String: Any]] else { return }
+            guard let rows = result?["twins"] as? [[String: Any]] else { return }
             twins = rows
         } catch {
             print("refresh error:", error)
