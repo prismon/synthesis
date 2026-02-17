@@ -4,10 +4,15 @@
   "packageManager": "pnpm@9.0.0",
   "scripts": {
     "build": "pnpm -r build",
+    "build:web": "pnpm --filter @synthesis/lovable-web build",
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
     "dev": "docker compose -f infra/docker-compose.yml up --build",
+    "dev:web": "pnpm --filter @synthesis/lovable-web dev",
     "down": "docker compose -f infra/docker-compose.yml down -v"
+  },
+  "devDependencies": {
+    "vitest": "^4.0.18"
   }
 }

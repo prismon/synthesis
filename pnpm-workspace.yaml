@@ -1,3 +1,4 @@
 packages:
+  - "clients/lovable-web"
   - "packages/*"
   - "services/*"
