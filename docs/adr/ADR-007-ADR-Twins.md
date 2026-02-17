@@ -1,63 +1,75 @@
-# ADR-007: ADR Twins — Representing Architecture Decisions as Digital Twins
+# ADR-007: Product and Feature Twins
 
 ## Status
 Proposed
 
 ## Context
-Architecture Decision Records (ADRs) in `docs/adr/` are static markdown files. They guide the system's design but have no runtime presence — we cannot attach events, track lifecycle changes, or associate behavior with individual decisions. As the project grows, we need ADRs to be first-class entities so that:
+Synthesis is itself a product. The system manages digital twins, but we have no twin representing the product being built, nor its features. Without this, there is no structured way to:
 
-- Changes to an ADR (superseded, amended, deprecated) produce observable events.
-- Rules can reference which ADR governs a particular behavior.
-- Agents can reason about architectural constraints by reading twin state.
-- Counterparts link each twin back to the canonical markdown file.
+- Track which features exist and their lifecycle (proposed, in-progress, shipped, deprecated).
+- Link artifacts (ADRs, code, tests) back to the feature they serve.
+- Let agents reason about what the product does and what is being worked on.
+
+The natural first-class entities are **Product** (the thing being built) and **Feature** (a capability the product provides). Everything else — ADRs, specs, issues — eventually relates back to a feature of a product.
 
 ## Decision
-Each ADR file gets a **digital twin** of type `adr`. The twin is created via a CLI tool (`twin-cli`) that:
 
-1. **Scans** `docs/adr/` for `ADR-*.md` files.
-2. **Parses** front-matter / heading to extract the ADR number, title, and status.
-3. **Creates a twin** (type: `adr`, title: e.g. `ADR-001: TypeScript as Core Implementation Language`).
-4. **Attaches a counterpart** (kind: `file`, resourceUri: `file://docs/adr/ADR-001-TypeScript-Core.md`, role: `source`).
-5. **Appends a `characteristic.set` event** recording the parsed status (`accepted`, `proposed`, `superseded`, etc.) at path `adr.status`.
-6. Is **idempotent** — re-running skips ADRs that already have a twin (matched by counterpart resourceUri).
+### Product twin
 
-### CLI surface
+A twin of type `product` represents a product. For Synthesis itself:
+
+| Field       | Value                            |
+|-------------|----------------------------------|
+| type        | `product`                        |
+| title       | `Synthesis`                      |
+
+Characteristics: `product.description`, `product.repo` (git remote URL), etc.
+
+### Feature twin
+
+A twin of type `feature` represents a capability of a product. A feature is linked to its product via a counterpart:
+
+| Field       | Value                            |
+|-------------|----------------------------------|
+| type        | `feature`                        |
+| title       | e.g. `Event-sourced twin store`  |
+| counterpart | kind=`twin`, resourceUri=`mcp://synthesis/tenant/{tenantId}/twin/{productTwinId}`, role=`product` |
+
+Characteristics: `feature.status` (`proposed` | `in-progress` | `shipped` | `deprecated`), `feature.description`.
+
+### CLI surface (`twin-cli`)
 
 ```
-twin-cli adr sync                           # scan + create/update all ADR twins
-twin-cli adr sync --file ADR-007-...md      # sync a single ADR
-twin-cli adr list                           # list ADR twins and their status
+twin-cli product create --title "Synthesis"                    # create product twin
+twin-cli product list                                          # list products
+
+twin-cli feature create --product <twinId> --title "..."       # create feature for product
+twin-cli feature list   --product <twinId>                     # list features for a product
+twin-cli feature set-status --twin <twinId> --status shipped   # update feature status
 ```
 
-The CLI communicates with mcp-gateway over MCP Streamable HTTP, using the same tools the macOS client uses. It does not access the database directly.
+The CLI communicates with mcp-gateway over MCP Streamable HTTP. It does not access the database directly.
 
-### Twin structure for an ADR
+### Relationship model
 
-| Field         | Value                                              |
-|---------------|----------------------------------------------------|
-| type          | `adr`                                              |
-| title         | `ADR-001: TypeScript as Core Implementation Language` |
-| counterpart   | kind=`file`, resourceUri=`file://docs/adr/ADR-001-TypeScript-Core.md`, role=`source` |
-| characteristics | `adr.status` = `accepted`, `adr.number` = `1`   |
+Products and features are both twins. The parent relationship is expressed through a counterpart on the feature twin pointing to the product twin (kind=`twin`, role=`product`). This reuses the existing counterpart mechanism for internal cross-references rather than inventing a new relationship table.
 
-### Future behavior hooks (Phase >0)
+### Future extensions
 
-- A rule that enforces "twins of type `adr` require `adr.status` to be a known enum value."
-- An agent that watches for `characteristic.set` events on `adr.status` and notifies when an ADR is superseded.
-- Cross-referencing: when a rule references an ADR, the rule's twin can have a counterpart pointing to the ADR twin.
+- **ADR twins** (type `adr`) linked to the product or to a specific feature via counterpart.
+- **Spec twins** (type `spec`) attached to a feature.
+- Agents that watch for `characteristic.set` on `feature.status` to trigger downstream workflows.
 
 ## Consequences
 
 ### Positive
-- ADRs become observable, queryable, event-sourced entities.
-- The CLI tool doubles as a template for future twin-creation workflows.
-- Counterpart linkage keeps the twin grounded to the real artifact.
+- The product and its features are observable, queryable, event-sourced entities from day one.
+- Counterpart-based linking is uniform — the same mechanism links to files, APIs, and other twins.
+- The CLI establishes a pattern for all future twin-creation workflows.
 
 ### Negative / Risks
-- Requires running `twin-cli adr sync` after adding/changing ADRs (manual step).
-- Parsing ADR markdown is fragile if the format drifts.
+- The twin-to-twin counterpart convention (kind=`twin`) is informal — nothing in the schema enforces referential integrity between twins.
 
 ### Mitigations
-- Keep the ADR markdown format simple and documented.
-- The sync command is idempotent and safe to run from CI or hooks.
-- Validate parsed data through the existing rules pipeline.
+- A rules-pipeline rule can validate that counterparts of kind=`twin` reference real twin IDs.
+- Keep the feature status enum small and documented; enforce via rules in Phase >0.
