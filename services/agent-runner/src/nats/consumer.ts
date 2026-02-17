@@ -16,13 +16,25 @@ export async function runConsumer(natsUrl: string) {
       console.error("consumer error", err);
       return;
     }
+    if (!msg) {
+      return;
+    }
     const s = sc.decode(msg.data);
     console.log("[agent-runner] got", msg.subject, s);
     msg.ack();
   });
   opts.filterSubject("twin.>");
 
-  const sub = await js.subscribe("twin.>", opts);
+  let sub;
+  for (;;) {
+    try {
+      sub = await js.subscribe("twin.>", opts);
+      break;
+    } catch (err) {
+      console.warn("stream not ready yet, retrying in 1s");
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+  }
 
   (async () => {
     for await (const _ of sub) {
@@ -30,11 +42,11 @@ export async function runConsumer(natsUrl: string) {
     }
   })().catch(console.error);
 
-  nc.status().then(async (it) => {
-    for await (const s of it) {
+  (async () => {
+    for await (const s of nc.status()) {
       if (s.type === Events.Disconnect) console.warn("nats disconnect");
     }
-  });
+  })().catch(console.error);
 
   return nc;
 }

@@ -11,7 +11,14 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 
 async function runMigrations() {
   const distDir = path.dirname(fileURLToPath(import.meta.url));
-  const migDir = path.resolve(distDir, "db/migrations");
+  const migrationDirs = [
+    path.resolve(distDir, "db/migrations"),
+    path.resolve(distDir, "../src/db/migrations")
+  ];
+  const migDir = migrationDirs.find((dir) => fs.existsSync(dir));
+  if (!migDir) {
+    throw new Error(`No migrations directory found. Checked: ${migrationDirs.join(", ")}`);
+  }
   const files = fs.readdirSync(migDir).filter((f) => f.endsWith(".sql")).sort();
   for (const f of files) {
     const sql = fs.readFileSync(path.join(migDir, f), "utf8");
