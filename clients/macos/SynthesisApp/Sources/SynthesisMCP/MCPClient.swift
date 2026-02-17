@@ -59,6 +59,7 @@ public final class MCPClient: ObservableObject {
         var req = URLRequest(url: mcpURL)
         req.httpMethod = "POST"
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.setValue("application/json, text/event-stream", forHTTPHeaderField: "Accept")
         if let sid = sessionId {
             req.setValue(sid, forHTTPHeaderField: "Mcp-Session-Id")
         }
