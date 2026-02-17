@@ -68,6 +68,19 @@ importers:
         specifier: ^5.6.3
         version: 5.9.3
 
+  services/twin-cli:
+    dependencies:
+      '@synthesis/contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
+    devDependencies:
+      '@types/node':
+        specifier: ^25.2.3
+        version: 25.2.3
+      typescript:
+        specifier: ^5.6.3
+        version: 5.9.3
+
 packages:
 
   '@drizzle-team/brocli@0.10.2':
