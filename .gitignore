@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Swift
+.build/
+.swiftpm/
+
+# macOS
+.DS_Store
+
+# IDE
+*.xcodeproj
+*.xcworkspace
+xcuserdata/
+
+# Environment
+.env
+.env.*
+!.env.example
